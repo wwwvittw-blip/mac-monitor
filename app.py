@@ -4,6 +4,7 @@ import json
 import re
 from bs4 import BeautifulSoup
 import time
+import os
 
 app = Flask(__name__)
 
@@ -40,7 +41,6 @@ def fetch_single_mac(i, mac):
         
     url = f"http://realtrack236.brickcom.com:8086/data_log?mac={mac}&use_hours=on&hours=24"
     try:
-        # 加上 User-Agent 模擬瀏覽器，降低被伺服器誤判擋下的機率
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         resp = requests.get(url, headers=headers, timeout=4)
         
@@ -89,7 +89,6 @@ def fetch_single_mac(i, mac):
 @app.route('/get_data')
 def get_data():
     results = []
-    # 逐一循序發送請求並稍微隔開 0.2 秒，避免瞬間併發導致伺服器 503 過載
     for i, mac in enumerate(mac_list):
         result = fetch_single_mac(i, mac)
         results.append(result)
@@ -98,4 +97,6 @@ def get_data():
     return jsonify(results)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # 支援雲端主機動態指派 Port，若在本地執行則預設使用 5001
+    port = int(os.environ.get('PORT', 5001))
+    app.run(host='0.0.0.0', port=port)
