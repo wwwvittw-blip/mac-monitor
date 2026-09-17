@@ -1,10 +1,9 @@
 from flask import Flask, render_template, jsonify, request
 import requests
-import json
 import re
 from bs4 import BeautifulSoup
-import time
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
@@ -32,7 +31,8 @@ def update_macs():
         return jsonify({"status": "success", "macs": mac_list})
     return jsonify({"status": "error", "message": "Invalid data"}), 400
 
-def fetch_single_mac(i, mac):
+def fetch_single_mac(args):
+    i, mac = args
     if not mac:
         return {
             "index": i + 1, "mac": "", "status": "未設定 MAC",
@@ -41,8 +41,11 @@ def fetch_single_mac(i, mac):
         
     url = f"http://realtrack236.brickcom.com:8086/data_log?mac={mac}&use_hours=on&hours=24"
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        resp = requests.get(url, headers=headers, timeout=4)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        # 設定 6 秒逾時
+        resp = requests.get(url, headers=headers, timeout=6)
         
         if resp.status_code == 200:
             html_content = resp.text
@@ -88,15 +91,12 @@ def fetch_single_mac(i, mac):
 
 @app.route('/get_data')
 def get_data():
-    results = []
-    for i, mac in enumerate(mac_list):
-        result = fetch_single_mac(i, mac)
-        results.append(result)
-        time.sleep(0.2) 
+    # 使用多執行緒同時抓取 5 台機器，大幅縮短回應時間，避免 502 逾時
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(fetch_single_mac, enumerate(mac_list)))
         
     return jsonify(results)
 
 if __name__ == '__main__':
-    # 支援雲端主機動態指派 Port，若在本地執行則預設使用 5001
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port)
