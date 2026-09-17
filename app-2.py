@@ -1,9 +1,9 @@
 from flask import Flask, render_template, jsonify, request
 import requests
-import json
 import re
 from bs4 import BeautifulSoup
-import time
+import os
+from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__)
 
@@ -31,7 +31,8 @@ def update_macs():
         return jsonify({"status": "success", "macs": mac_list})
     return jsonify({"status": "error", "message": "Invalid data"}), 400
 
-def fetch_single_mac(i, mac):
+def fetch_single_mac(args):
+    i, mac = args
     if not mac:
         return {
             "index": i + 1, "mac": "", "status": "未設定 MAC",
@@ -43,8 +44,8 @@ def fetch_single_mac(i, mac):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        # 將 timeout 稍微拉長到 8 秒
-        resp = requests.get(url, headers=headers, timeout=8)
+        # 設定 6 秒逾時
+        resp = requests.get(url, headers=headers, timeout=6)
         
         if resp.status_code == 200:
             html_content = resp.text
@@ -83,23 +84,19 @@ def fetch_single_mac(i, mac):
                 "rssi": "-", "rsrp": "-", "sinr": "-"
             }
     except Exception as e:
-        # 回傳具體的錯誤訊息到狀態列，方便我們看是哪種錯誤 (例如 Connection Timeout 或 Name resolution failed)
-        err_msg = str(e)[:20] if str(e) else "連線逾時"
         return {
-            "index": i + 1, "mac": mac, "status": f"錯誤: {err_msg}",
+            "index": i + 1, "mac": mac, "status": "連線逾時",
             "rssi": "-", "rsrp": "-", "sinr": "-"
         }
 
 @app.route('/get_data')
 def get_data():
-    results = []
-    # 逐一循序發送請求並稍微隔開 0.2 秒，避免瞬間併發導致伺服器 503 過載
-    for i, mac in enumerate(mac_list):
-        result = fetch_single_mac(i, mac)
-        results.append(result)
-        time.sleep(0.2) 
+    # 使用多執行緒同時抓取 5 台機器，大幅縮短回應時間，避免 502 逾時
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(fetch_single_mac, enumerate(mac_list)))
         
     return jsonify(results)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get('PORT', 5001))
+    app.run(host='0.0.0.0', port=port)
