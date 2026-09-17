@@ -40,9 +40,11 @@ def fetch_single_mac(i, mac):
         
     url = f"http://realtrack236.brickcom.com:8086/data_log?mac={mac}&use_hours=on&hours=24"
     try:
-        # 加上 User-Agent 模擬瀏覽器，降低被伺服器誤判擋下的機率
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        resp = requests.get(url, headers=headers, timeout=4)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        # 將 timeout 稍微拉長到 8 秒
+        resp = requests.get(url, headers=headers, timeout=8)
         
         if resp.status_code == 200:
             html_content = resp.text
@@ -81,8 +83,10 @@ def fetch_single_mac(i, mac):
                 "rssi": "-", "rsrp": "-", "sinr": "-"
             }
     except Exception as e:
+        # 回傳具體的錯誤訊息到狀態列，方便我們看是哪種錯誤 (例如 Connection Timeout 或 Name resolution failed)
+        err_msg = str(e)[:20] if str(e) else "連線逾時"
         return {
-            "index": i + 1, "mac": mac, "status": "連線逾時",
+            "index": i + 1, "mac": mac, "status": f"錯誤: {err_msg}",
             "rssi": "-", "rsrp": "-", "sinr": "-"
         }
 
