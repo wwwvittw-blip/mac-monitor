@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>MAC 訊號即時監控面板</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; padding-top: 30px; }
+        .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .metric-val { font-size: 1.5rem; font-weight: bold; color: #0d6efd; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2 class="mb-4 text-center">📡 5組 MAC 訊號即時監控系統</h2>
+
+    <!-- MAC 設定區塊 -->
+    <div class="card p-4 mb-4">
+        <h4>設定 5 組 MAC 位址</h4>
+        <div class="row g-3 mt-2" id="mac-inputs">
+            {% for mac in macs %}
+            <div class="col-md-4">
+                <div class="input-group">
+                    <span class="input-group-text">#{{ loop.index }}</span>
+                    <input type="text" class="form-control mac-input" value="{{ mac }}" placeholder="輸入 MAC 位址">
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-3 text-end">
+            <button class="btn btn-primary" onclick="saveMacs()">儲存 / 套用 MAC</button>
+        </div>
+    </div>
+
+    <!-- 狀態顯示區塊 -->
+    <div class="card p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>即時監控數據 (每 5 秒更新)</h4>
+            <span id="update-status" class="badge bg-success">監控中...</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover text-center align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>編號</th>
+                        <th>MAC 位址</th>
+                        <th>狀態</th>
+                        <th>RSSI (dBm)</th>
+                        <th>RSRP (dBm)</th>
+                        <th>SINR (dB)</th>
+                    </tr>
+                </thead>
+                <tbody id="data-table-body">
+                    <!-- 動態載入 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    function saveMacs() {
+        const inputs = document.querySelectorAll('.mac-input');
+        const macsArray = Array.from(inputs).map(input => input.value.trim());
+
+        fetch('/update_macs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ macs: macsArray })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('MAC 設定已成功更新！');
+                fetchData();
+            } else {
+                alert('更新失敗');
+            }
+        });
+    }
+
+    function fetchData() {
+        fetch('/get_data')
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('data-table-body');
+            tbody.innerHTML = '';
+            
+            if (!Array.isArray(data)) return;
+
+            data.forEach(item => {
+                let badgeClass = 'bg-secondary';
+                if (item.status === '連線正常') badgeClass = 'bg-success';
+                else if (item.status.includes('錯誤') || item.status.includes('失敗') || item.status.includes('逾時') || item.status.includes('503')) badgeClass = 'bg-danger';
+                else if (item.status.includes('無有效') || item.status.includes('未設定')) badgeClass = 'bg-warning text-dark';
+
+                const row = `
+                    <tr>
+                        <td><strong>#${item.index}</strong></td>
+                        <td><code>${item.mac || '(未設定)'}</code></td>
+                        <td><span class="badge ${badgeClass}">${item.status}</span></td>
+                        <td><span class="metric-val">${item.rssi}</span></td>
+                        <td><span class="metric-val">${item.rsrp}</span></td>
+                        <td><span class="metric-val">${item.sinr}</span></td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+            document.getElementById('update-status').innerText = '最後更新: ' + new Date().toLocaleTimeString();
+            document.getElementById('update-status').className = 'badge bg-success';
+        })
+        .catch(err => {
+            console.error('Fetch error:', err);
+            document.getElementById('update-status').innerText = '更新失敗 (連線中...)';
+            document.getElementById('update-status').className = 'badge bg-danger';
+        });
+    }
+
+    fetchData();
+    setInterval(fetchData, 5000);
+</script>
+</body>
+</html>
